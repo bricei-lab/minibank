@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MiniBank — Tableau de bord</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; background: #f0f4f8; color: #1a202c; }
+    .header { background: #1a365d; color: white; padding: 20px 24px; }
+    .header h1 { font-size: 22px; }
+    .header p { font-size: 13px; opacity: 0.7; margin-top: 4px; }
+    .container { max-width: 900px; margin: 24px auto; padding: 0 16px; }
+
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
+    .stat-card { background: white; border-radius: 10px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .stat-card .label { font-size: 12px; color: #718096; text-transform: uppercase; letter-spacing: 0.5px; }
+    .stat-card .value { font-size: 24px; font-weight: 700; margin-top: 4px; }
+
+    .section { background: white; border-radius: 10px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .section h2 { font-size: 16px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #e2e8f0; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th { text-align: left; padding: 8px 12px; background: #f7fafc; color: #4a5568; font-size: 12px; text-transform: uppercase; }
+    td { padding: 10px 12px; border-top: 1px solid #e2e8f0; }
+
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    label { font-size: 13px; font-weight: 600; display: block; margin-bottom: 4px; }
+    select, input { width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; }
+    .btn { background: #2563eb; color: white; border: none; padding: 10px 20px; border-radius: 6px;
+           font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 12px; }
+    .btn:hover { background: #1d4ed8; }
+
+    .result-box { margin-top: 12px; padding: 12px; border-radius: 6px; font-size: 13px; display: none; }
+    .result-success { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
+    .result-error { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+
+    .api-log { background: #1a202c; color: #a0aec0; border-radius: 8px; padding: 16px; margin-top: 16px;
+               font-family: 'Courier New', monospace; font-size: 12px; max-height: 250px; overflow-y: auto; }
+    .api-log .entry { margin-bottom: 6px; padding: 4px 0; border-bottom: 1px solid #2d3748; }
+    .api-log .method { font-weight: bold; }
+    .api-log .get { color: #68d391; }
+    .api-log .post { color: #f6ad55; }
+    .api-log .status-ok { color: #68d391; }
+    .api-log .status-err { color: #fc8181; }
+    .api-log .url { color: #90cdf4; }
+
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 100px; font-size: 11px; font-weight: 600; }
+    .badge-ok { background: #d1fae5; color: #065f46; }
+    .badge-err { background: #fee2e2; color: #991b1b; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🏦 MiniBank — Tableau de bord</h1>
+  <p>Ton application bancaire simplifiée — chaque action appelle une API REST</p>
+</div>
+
+<div class="container">
+  <!-- Dashboard stats -->
+  <div class="stats-grid" id="stats">
+    <div class="stat-card"><div class="label">Clients</div><div class="value" id="stat-clients">—</div></div>
+    <div class="stat-card"><div class="label">Comptes</div><div class="value" id="stat-comptes">—</div></div>
+    <div class="stat-card"><div class="label">Encours total</div><div class="value" id="stat-encours">—</div></div>
+    <div class="stat-card"><div class="label">Virements</div><div class="value" id="stat-virements">—</div></div>
+  </div>
+
+  <!-- Liste des clients et comptes -->
+  <div class="section">
+    <h2>👥 Clients et comptes <small style="color:#718096;font-weight:400">— API: GET /api/clients</small></h2>
+    <table id="clients-table">
+      <thead><tr><th>Client</th><th>Email</th><th>Comptes</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <!-- Formulaire de virement -->
+  <div class="section">
+    <h2>💸 Effectuer un virement <small style="color:#718096;font-weight:400">— API: POST /api/virements</small></h2>
+    <div class="form-grid">
+      <div><label>Compte source</label><select id="source"></select></div>
+      <div><label>Compte destination</label><select id="dest"></select></div>
+      <div><label>Montant (€)</label><input type="number" id="montant" placeholder="500.00"></div>
+      <div><label>Libellé</label><input type="text" id="libelle" placeholder="Loyer mars 2026"></div>
+    </div>
+    <button class="btn" onclick="effectuerVirement()">Exécuter le virement</button>
+    <div id="virement-result" class="result-box"></div>
+  </div>
+
+  <!-- Historique des virements -->
+  <div class="section">
+    <h2>📋 Historique des virements <small style="color:#718096;font-weight:400">— API: GET /api/virements</small></h2>
+    <table id="virements-table">
+      <thead><tr><th>De</th><th>Vers</th><th>Montant</th><th>Libellé</th><th>Statut</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <!-- Journal des appels API -->
+  <div class="section">
+    <h2>🔍 Journal des appels API <small style="color:#718096;font-weight:400">— Monitoring en temps réel</small></h2>
+    <p style="font-size:13px;color:#718096;margin-bottom:12px">Chaque action ci-dessus déclenche un appel API. Tu vois ici exactement quels endpoints sont appelés, avec quel verbe HTTP, et quelle réponse le serveur renvoie.</p>
+    <div class="api-log" id="api-log">
+      <div style="color:#4a5568">En attente d'appels API...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let allComptes = [];
+  const logContainer = document.getElementById('api-log');
+  let firstLog = true;
+
+  // Fonction utilitaire pour appeler les APIs ET logger chaque appel
+  async function apiCall(method, url, body = null) {
+    const start = Date.now();
+    const options = { method, headers: { 'Content-Type': 'application/json' } };
+    if (body) options.body = JSON.stringify(body);
+
+    try {
+      const response = await fetch(url, options);
+      const data = await response.json();
+      const duration = Date.now() - start;
+
+      // Logger l'appel dans le journal
+      logApiCall(method, url, response.status, duration, data);
+      return data;
+    } catch (err) {
+      logApiCall(method, url, 'ERR', Date.now() - start, { error: err.message });
+      throw err;
+    }
+  }
+
+  function logApiCall(method, url, status, duration, data) {
+    if (firstLog) { logContainer.innerHTML = ''; firstLog = false; }
+    const entry = document.createElement('div');
+    entry.className = 'entry';
+    const methodClass = method === 'GET' ? 'get' : 'post';
+    const statusClass = status === 200 || status === 201 ? 'status-ok' : 'status-err';
+    const preview = JSON.stringify(data).substring(0, 80) + (JSON.stringify(data).length > 80 ? '...' : '');
+    entry.innerHTML = `
+      <span class="method ${methodClass}">${method}</span>
+      <span class="url">${url}</span>
+      → <span class="${statusClass}">${status}</span>
+      <span style="color:#4a5568">(${duration}ms)</span>
+      <div style="color:#4a5568;margin-top:2px;font-size:11px">${preview}</div>
+    `;
+    logContainer.prepend(entry);
+  }
+
+  // Charger le dashboard
+  async function loadDashboard() {
+    const data = await apiCall('GET', '/api/dashboard');
+    if (data.success) {
+      document.getElementById('stat-clients').textContent = data.data.total_clients;
+      document.getElementById('stat-comptes').textContent = data.data.total_comptes;
+      document.getElementById('stat-encours').textContent =
+        parseFloat(data.data.total_encours).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
+      document.getElementById('stat-virements').textContent = data.data.total_virements;
+    }
+  }
+
+  // Charger les clients
+  async function loadClients() {
+    const data = await apiCall('GET', '/api/clients');
+    if (!data.success) return;
+
+    const tbody = document.querySelector('#clients-table tbody');
+    tbody.innerHTML = '';
+
+    for (const client of data.data) {
+      const comptesData = await apiCall('GET', `/api/clients/${client.id}/comptes`);
+      const comptesHtml = comptesData.data.map(c => {
+        allComptes.push({ ...c, clientNom: `${client.prenom} ${client.nom}` });
+        return `<div>${c.type_compte}: <strong>${parseFloat(c.solde).toLocaleString('fr-FR')}€</strong> <span style="color:#a0aec0;font-size:11px">${c.iban.substring(0,12)}...</span></div>`;
+      }).join('');
+
+      tbody.innerHTML += `
+        <tr>
+          <td><strong>${client.prenom} ${client.nom}</strong></td>
+          <td>${client.email}</td>
+          <td>${comptesHtml}</td>
+        </tr>`;
+    }
+
+    // Remplir les selects du formulaire de virement
+    const sourceSelect = document.getElementById('source');
+    const destSelect = document.getElementById('dest');
+    sourceSelect.innerHTML = '';
+    destSelect.innerHTML = '';
+    allComptes.forEach(c => {
+      const option = `<option value="${c.id}">${c.clientNom} — ${c.type_compte} (${parseFloat(c.solde).toLocaleString('fr-FR')}€)</option>`;
+      sourceSelect.innerHTML += option;
+      destSelect.innerHTML += option;
+    });
+    if (allComptes.length > 1) destSelect.selectedIndex = 1;
+  }
+
+  // Effectuer un virement
+  async function effectuerVirement() {
+    const resultBox = document.getElementById('virement-result');
+    const body = {
+      compte_source_id: parseInt(document.getElementById('source').value),
+      compte_dest_id: parseInt(document.getElementById('dest').value),
+      montant: parseFloat(document.getElementById('montant').value),
+      libelle: document.getElementById('libelle').value
+    };
+
+    try {
+      const data = await apiCall('POST', '/api/virements', body);
+      resultBox.style.display = 'block';
+      if (data.success) {
+        resultBox.className = 'result-box result-success';
+        resultBox.textContent = '✅ ' + data.message;
+        // Recharger les données pour voir les soldes mis à jour
+        allComptes = [];
+        await loadClients();
+        await loadDashboard();
+        await loadVirements();
+      } else {
+        resultBox.className = 'result-box result-error';
+        resultBox.textContent = '❌ ' + data.error;
+      }
+    } catch (err) {
+      resultBox.style.display = 'block';
+      resultBox.className = 'result-box result-error';
+      resultBox.textContent = '❌ Erreur: ' + err.message;
+    }
+  }
+
+  // Charger l'historique des virements
+  async function loadVirements() {
+    const data = await apiCall('GET', '/api/virements');
+    if (!data.success) return;
+
+    const tbody = document.querySelector('#virements-table tbody');
+    tbody.innerHTML = data.data.length === 0
+      ? '<tr><td colspan="5" style="text-align:center;color:#a0aec0">Aucun virement pour le moment</td></tr>'
+      : data.data.map(v => `
+          <tr>
+            <td>${v.nom_source}</td>
+            <td>${v.nom_dest}</td>
+            <td><strong>${parseFloat(v.montant).toLocaleString('fr-FR')}€</strong></td>
+            <td>${v.libelle || '—'}</td>
+            <td><span class="badge ${v.statut === 'execute' ? 'badge-ok' : 'badge-err'}">${v.statut}</span></td>
+          </tr>`).join('');
+  }
+
+  // Initialisation
+  async function init() {
+    await loadDashboard();
+    await loadClients();
+    await loadVirements();
+  }
+  init();
+</script>
+</body>
+</html>
